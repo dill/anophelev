@@ -1,7 +1,6 @@
-#install.packages("ismev")               # if not installed!
-#library(ismev)
+# explore the data
+
 library(magrittr)
-library(mgcv)
 library(tidyverse)
 library(rnaturalearth)
 library(rnaturalearthdata)
@@ -34,13 +33,21 @@ ggplot(world) +
            ylim=st_bbox(geo_unique)[c(2,4)], expand=FALSE)
 
 
-
 ## now fiddle with per species plots, this is BAD CODE
 # lifted from https://r-spatial.github.io/sf/reference/tidyverse.html
 #  (storm example)
 # data, but make it spatial
 geo_anoph_all <- anoph %>%
   st_as_sf(coords=c("Long", "Lat"), crs=4326)
+
+# all data but faceted by year
+ggplot(world) +
+  geom_sf() +
+  geom_sf(data=geo_anoph_all, size=0.3) +
+  facet_wrap(~Year) +
+  coord_sf(xlim=st_bbox(geo_unique)[c(1,3)],
+           ylim=st_bbox(geo_unique)[c(2,4)], expand=FALSE)
+
 
 # this is a huge faff, first find per species/year maxes
 x <- geo_anoph_all %>% group_by(Species, Year) %>% nest
@@ -51,8 +58,9 @@ ff <- function(tr){
 }
 trs <- lapply(x$data, ff)
 trs <- do.call(bind_rows, trs) %>% st_sf(crs=4326)
-trs.sf = bind_cols(x[,1:2], trs)
+trs.sf <- bind_cols(x[,1:2], trs)
 # get that back into format
+anoph_max <- trs.sf
 geo_anoph_max <- st_sf(trs.sf)
 
 # now take each species and turn it into a line, with years as vertices
@@ -62,7 +70,7 @@ geo_anoph_max <- lapply(x$data, function(tr){
   st_cast(st_combine(tr), "LINESTRING")[[1]]
 }) %>%
     st_sfc(crs = 4326)
-trs.sf = st_sf(x[,1:2], trs)
+geo_anoph_max = st_sf(geo_anoph_max)
 
 
 # plot maps, one species per facet
@@ -73,4 +81,78 @@ ggplot() +
   theme_minimal() +
   coord_sf(xlim=st_bbox(geo_anoph_max)[c(1,3)],
            ylim=st_bbox(geo_anoph_max)[c(2,4)], expand=FALSE)
+
+
+## one final thing: plot max lat per year
+# what was sampling effort max like?
+
+
+# faff, find per year maxes
+x <- geo_anoph_all %>% group_by(Year) %>% nest
+ff <- function(tr){
+  co <- st_coordinates(tr)
+  bind_cols(tr[which.max(co[, 2]), ],
+        Lat = max(co[, 2]))
+}
+trs <- lapply(x$data, ff)
+trs <- do.call(bind_rows, trs) %>% st_sf(crs=4326)
+trs.sf = bind_cols(x[,1:2], trs)
+# get that back into format
+geo_samp_max <- st_sf(trs.sf)
+geo_samp_max$Species <- NULL
+
+ggplot(geo_samp_max) +
+  geom_line(aes(x=Year, y=Lat)) +
+  labs(y="Max sampled latitude") +
+  theme_minimal()
+
+
+
+ggplot() +
+  geom_line(aes(x=Year, y=Lat), data=geo_samp_max, col="black") +
+  geom_line(aes(x=Year, y=Lat), data=anoph_max, col="red") +
+  facet_wrap(~Species) +
+  theme_minimal()
+
+
+
+# same plot with min and max on it
+# this is a huge faff, first find per species/year mins
+x <- geo_anoph_all %>% group_by(Species, Year) %>% nest
+ff <- function(tr){
+  co <- st_coordinates(tr)
+  bind_cols(tr[which.min(co[, 2]), ],
+        Lat = min(co[, 2]))
+}
+trs <- lapply(x$data, ff)
+trs <- do.call(bind_rows, trs) %>% st_sf(crs=4326)
+trs.sf <- bind_cols(x[,1:2], trs)
+# get that back into format
+anoph_min <- st_sf(trs.sf)
+
+
+# faff, find per year mins
+x <- geo_anoph_all %>% group_by(Year) %>% nest
+ff <- function(tr){
+  co <- st_coordinates(tr)
+  bind_cols(tr[which.min(co[, 2]), ],
+        Lat = min(co[, 2]))
+}
+trs <- lapply(x$data, ff)
+trs <- do.call(bind_rows, trs) %>% st_sf(crs=4326)
+trs.sf = bind_cols(x[,1:2], trs)
+# get that back into format
+geo_samp_min <- st_sf(trs.sf)
+geo_samp_min$Species <- NULL
+
+
+ggplot() +
+  geom_line(aes(x=Year, y=Lat), data=geo_samp_max, col="black") +
+  geom_line(aes(x=Year, y=Lat), data=anoph_max, col="red") +
+  geom_line(aes(x=Year, y=Lat), data=geo_samp_min, col="black") +
+  geom_line(aes(x=Year, y=Lat), data=anoph_min, col="blue") +
+  facet_wrap(~Species) +
+  theme_minimal()
+
+
 
